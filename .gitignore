@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
+*.egg-info/
+
+# Model weights & large files
+*.h5
+*.pkl
+*.pt
+*.pth
+*.ckpt
+model/weights/
+
+# Audio/Video outputs
+*.mp3
+*.wav
+*.mp4
+*.avi
+
+# Data
+data/
+datasets/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
