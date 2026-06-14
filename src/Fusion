@@ -1,0 +1,98 @@
+"""
+fusion.py
+─────────────────────────────────────────────────────────────
+Lip-to-Speech Synthesis — Internship Project
+Compsoft Technologies, Bengaluru | 2023-24
+Yashaswini R (1AM21EC101), AMC Engineering College
+
+Module: Multimodal Fusion
+  - Combines CNN visual features and RNN audio features
+  - Two strategies: Concatenation and Attention Mechanism
+─────────────────────────────────────────────────────────────
+"""
+
+import numpy as np
+
+
+def concatenation_fusion(visual_features: np.ndarray, audio_features: np.ndarray) -> np.ndarray:
+    """
+    Simple concatenation-based multimodal fusion.
+
+    Joins visual (CNN) and audio (RNN) feature vectors along the last axis.
+
+    Args:
+        visual_features : Array of shape (N, visual_dim)
+        audio_features  : Array of shape (N, audio_dim)
+
+    Returns:
+        Fused feature array of shape (N, visual_dim + audio_dim)
+    """
+    # Align sequence lengths if needed
+    min_len = min(len(visual_features), len(audio_features))
+    visual  = visual_features[:min_len]
+    audio   = audio_features[:min_len]
+
+    fused = np.concatenate([visual, audio], axis=-1)
+    print(f"[fusion] Concatenation fusion output shape: {fused.shape}")
+    return fused
+
+
+def attention_fusion(visual_features: np.ndarray, audio_features: np.ndarray) -> np.ndarray:
+    """
+    Attention-based multimodal fusion.
+
+    Computes a softmax attention score for each modality and produces
+    a weighted combination of visual and audio features.
+
+    Args:
+        visual_features : Array of shape (N, dim)
+        audio_features  : Array of shape (N, dim)  — must match visual dim
+
+    Returns:
+        Fused feature array of shape (N, dim)
+    """
+    # Ensure compatible dimensions by projecting to the smaller dim
+    dim = min(visual_features.shape[-1], audio_features.shape[-1])
+    v   = visual_features[:, :dim]
+    a   = audio_features[:, :dim]
+
+    # Align sequence lengths
+    min_len = min(len(v), len(a))
+    v = v[:min_len]
+    a = a[:min_len]
+
+    # Compute attention scores: dot product → softmax
+    scores = np.stack([
+        np.sum(v * v, axis=-1),   # Self-relevance of visual
+        np.sum(a * a, axis=-1),   # Self-relevance of audio
+    ], axis=-1)
+
+    # Softmax over the two modalities
+    exp_s = np.exp(scores - scores.max(axis=-1, keepdims=True))
+    weights = exp_s / exp_s.sum(axis=-1, keepdims=True)   # (N, 2)
+
+    fused = weights[:, 0:1] * v + weights[:, 1:2] * a
+    print(f"[fusion] Attention fusion output shape: {fused.shape}")
+    return fused
+
+
+def fuse(visual_features: np.ndarray,
+         audio_features: np.ndarray,
+         method: str = "attention") -> np.ndarray:
+    """
+    Dispatcher for fusion strategies.
+
+    Args:
+        visual_features : CNN output features
+        audio_features  : RNN output features
+        method          : 'attention' (default) or 'concat'
+
+    Returns:
+        Fused feature array
+    """
+    if method == "concat":
+        return concatenation_fusion(visual_features, audio_features)
+    elif method == "attention":
+        return attention_fusion(visual_features, audio_features)
+    else:
+        raise ValueError(f"Unknown fusion method: '{method}'. Choose 'attention' or 'concat'.")
