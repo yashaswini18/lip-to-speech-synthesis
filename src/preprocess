@@ -1,0 +1,143 @@
+"""
+preprocess.py
+─────────────────────────────────────────────────────────────
+Lip-to-Speech Synthesis — Internship Project
+Compsoft Technologies, Bengaluru | 2023-24
+Yashaswini R (1AM21EC101), AMC Engineering College
+
+Module: Video Preprocessing
+  - Extracts frames from input video
+  - Detects and crops the lip region using facial landmarks
+  - Normalises frames for model input
+─────────────────────────────────────────────────────────────
+"""
+
+import cv2
+import numpy as np
+import os
+
+
+# ── Constants ──────────────────────────────────────────────
+FRAME_SIZE    = (64, 64)   # Target size for lip region crops
+HAAR_CASCADE  = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+
+
+def extract_frames(video_path: str, output_dir: str = None):
+    """
+    Extract all frames from a video file.
+
+    Args:
+        video_path  : Path to the input .mp4 / .avi video
+        output_dir  : (Optional) folder to save individual frames as PNG
+
+    Returns:
+        List of frames as NumPy arrays (BGR)
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise FileNotFoundError(f"Cannot open video: {video_path}")
+
+    frames = []
+    frame_idx = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        frames.append(frame)
+
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(output_dir, f"frame_{frame_idx:05d}.png"), frame)
+
+        frame_idx += 1
+
+    cap.release()
+    print(f"[preprocess] Extracted {len(frames)} frames from '{video_path}'")
+    return frames
+
+
+def detect_and_crop_lips(frame: np.ndarray) -> np.ndarray | None:
+    """
+    Detect a face in the frame and crop the lip region.
+
+    Uses Haar Cascade for face detection, then approximates
+    the lip region from the lower portion of the face bounding box.
+
+    Args:
+        frame : BGR image as NumPy array
+
+    Returns:
+        Resized lip region (64x64 BGR) or None if no face detected
+    """
+    face_cascade = cv2.CascadeClassifier(HAAR_CASCADE)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+
+    if len(faces) == 0:
+        return None
+
+    # Use the first detected face
+    x, y, w, h = faces[0]
+
+    # Approximate lip region: lower 30% of face bounding box
+    lip_y_start = y + int(h * 0.65)
+    lip_y_end   = y + h
+    lip_x_start = x + int(w * 0.15)
+    lip_x_end   = x + int(w * 0.85)
+
+    lip_crop = frame[lip_y_start:lip_y_end, lip_x_start:lip_x_end]
+
+    if lip_crop.size == 0:
+        return None
+
+    lip_resized = cv2.resize(lip_crop, FRAME_SIZE)
+    return lip_resized
+
+
+def normalize_frames(frames: list) -> np.ndarray:
+    """
+    Normalize pixel values to [0, 1] range and stack into array.
+
+    Args:
+        frames : List of NumPy arrays (lip crops)
+
+    Returns:
+        NumPy array of shape (N, 64, 64, 3) with float32 values
+    """
+    arr = np.array(frames, dtype=np.float32) / 255.0
+    print(f"[preprocess] Normalised frame array shape: {arr.shape}")
+    return arr
+
+
+def preprocess_video(video_path: str) -> np.ndarray:
+    """
+    Full preprocessing pipeline for a single video.
+
+    Args:
+        video_path : Path to input video file
+
+    Returns:
+        Normalised lip frames array ready for model input
+    """
+    raw_frames   = extract_frames(video_path)
+    lip_crops    = [detect_and_crop_lips(f) for f in raw_frames]
+    valid_crops  = [c for c in lip_crops if c is not None]
+
+    if not valid_crops:
+        raise ValueError("No valid lip regions detected in video.")
+
+    normalised = normalize_frames(valid_crops)
+    return normalised
+
+
+# ── Quick test ─────────────────────────────────────────────
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python preprocess.py <video_path>")
+        sys.exit(1)
+
+    result = preprocess_video(sys.argv[1])
+    print(f"Output shape: {result.shape}")
